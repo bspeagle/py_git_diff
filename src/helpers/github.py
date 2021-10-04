@@ -16,6 +16,7 @@ class API:
         self.__access_token = str
         self.__github = github.Github
         self.__org = github.Organization.Organization
+        self.__repo = github.Repository.Repository
         self.__current_user = ""
 
     def authenticate(self, token):
@@ -37,7 +38,7 @@ class API:
                 f'{ex.args[1]["message"]} - Token: {self.__access_token}')
             sys.exit("Fail. Try Again.")
 
-    def load_organization(self, org):
+    def get_organization(self, org):
         '''
         Get the org. Now. Do it.
         '''
@@ -48,17 +49,56 @@ class API:
             LOGGER.error(f'{ex.args[1]["message"]} - Org: {org}')
             sys.exit("Fail. Try Again.")
 
-    def test(self, args):
+    def get_repo(self, repo_type, repo_arg):
         '''
-        Testes... Testes... 1, 2, 3...
+        Retrieve the repo. Or die trying.
+        '''
+
+        try:
+            if repo_type == "org":
+                self.__repo = self.__org.get_repo(repo_arg)
+            elif repo_type == "user":
+                self.__repo = self.__github.get_repo(self, repo_arg)
+        except Exception as ex:
+            LOGGER.error(f'{ex.args[1]["message"]} - Repo: {repo_arg}')
+            sys.exit("Fail. Try Again.")
+
+    def compare_commits(self, base_commit, head_commit):
+        '''
+        Compare commits and return commit messages
+        '''
+
+        try:
+            self.__repo.get_commit(base_commit)
+            self.__repo.get_commit(head_commit)
+        except Exception as ex:
+            LOGGER.error(ex.args[1]["message"])
+
+        this_array = []
+
+        compare_commits = self.__repo.compare(base_commit, head_commit).commits
+        for commit in compare_commits:
+            summary_commit = self.__repo.get_commit(commit.sha)
+
+            this_array.append({
+                "sha": summary_commit.sha,
+                "message": summary_commit.commit.message,
+                "last_modified": summary_commit.last_modified
+            })
+
+        return this_array
+
+    def git_diff(self, args):
+        '''
+        Get diffs: sha, message, last modified date
         '''
 
         self.authenticate(args.t)
 
         if args.o:
-            self.load_organization(args.o)
-            LOGGER.info(self.__org.get_repo(args.r).description)
+            self.get_organization(args.o)
+            self.get_repo("org", args.r)
         else:
-            LOGGER.info(self.__github.get_user(self).login)
-            LOGGER.info(self.__github.get_repo(
-                self, f'{self.__current_user}/{args.r}').description)
+            self.get_repo("user", f'{self.__current_user}/{args.r}')
+
+        return self.compare_commits(args.bc, args.hc)
